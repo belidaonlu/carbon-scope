@@ -3,10 +3,55 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Alert } from "@/components/ui/alert";
-import { PlusCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  PlusCircle,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  X,
+  Save,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import EmissionSummary from "./EmissionSummary";
 
+// Tooltip komponenti
+const Tooltip = ({ content, children }) => (
+  <div className="group relative inline-block">
+    {children}
+    <div className="invisible group-hover:visible absolute z-50 w-48 p-2 bg-gray-900 text-white text-sm rounded-md -left-20 top-full mt-2">
+      {content}
+      <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
+    </div>
+  </div>
+);
+
+// Progress indikatörü
+const ProgressIndicator = ({ total, completed }) => {
+  const percentage = (completed / total) * 100;
+  return (
+    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+      <div
+        className="bg-green-500 h-2.5 rounded-full transition-all duration-500"
+        style={{ width: `${percentage}%` }}
+      />
+    </div>
+  );
+};
+
+// Yeni form header komponenti
+const FormHeader = ({ title, description }) => (
+  <div className="mb-6">
+    <div className="flex items-center gap-2">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      <Tooltip content={description}>
+        <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+      </Tooltip>
+    </div>
+  </div>
+);
+
+// Geliştirilmiş select komponenti
 const SelectField = ({
   label,
   value,
@@ -14,9 +59,17 @@ const SelectField = ({
   options,
   placeholder,
   className,
+  tooltip,
 }) => (
   <div className="space-y-2">
-    {label && <Label>{label}</Label>}
+    <div className="flex items-center gap-2">
+      <Label>{label}</Label>
+      {tooltip && (
+        <Tooltip content={tooltip}>
+          <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+        </Tooltip>
+      )}
+    </div>
     <select
       className={cn(
         "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -35,22 +88,35 @@ const SelectField = ({
   </div>
 );
 
-const EntryCard = ({ entry }) => (
-  <div className="p-4 rounded-md border bg-muted/50">
+// Geliştirilmiş giriş kartı
+const EntryCard = ({ entry, onDelete }) => (
+  <div className="p-4 rounded-md border bg-muted/50 relative group">
+    {onDelete && (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+        onClick={() => onDelete(entry.id)}
+      >
+        <X className="h-4 w-4" />
+      </Button>
+    )}
     <p className="font-medium mb-2">{entry.source}</p>
-    <div className="space-y-1">
+    <div className="grid grid-cols-2 gap-2">
       {Object.entries(entry).map(([key, value]) => {
         if (["id", "scopeKey", "subKey", "source"].includes(key)) return null;
         return (
-          <p key={key} className="text-sm text-muted-foreground">
-            {key}: {value}
-          </p>
+          <div key={key} className="text-sm">
+            <span className="text-muted-foreground">{key}: </span>
+            <span className="font-medium">{value}</span>
+          </div>
         );
       })}
     </div>
   </div>
 );
 
+// Ana form komponenti
 const EmissionForm = ({
   fields,
   scopeKey,
@@ -59,108 +125,76 @@ const EmissionForm = ({
   onInputChange,
   onAddEntry,
   selectedSource,
-}) => (
-  <div className="space-y-4">
-    {fields.map((field) => (
-      <div key={field.name}>
-        {field.type === "select" ? (
-          <SelectField
-            label={field.label}
-            value={formData[scopeKey]?.[subKey]?.[field.name] || ""}
-            onChange={(e) =>
-              onInputChange(scopeKey, subKey, field.name, e.target.value)
-            }
-            options={field.options}
-            placeholder="Seçiniz"
-          />
-        ) : (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>{field.label}</Label>
-            <Input
-              id={field.name}
-              type={field.type}
-              value={formData[scopeKey]?.[subKey]?.[field.name] || ""}
-              onChange={(e) =>
-                onInputChange(scopeKey, subKey, field.name, e.target.value)
-              }
-            />
-          </div>
-        )}
-      </div>
-    ))}
-    <Button
-      variant="outline"
-      className="w-full"
-      onClick={() => onAddEntry(scopeKey, subKey)}
-    >
-      <PlusCircle className="mr-2 h-4 w-4" />
-      Ekle
-    </Button>
-  </div>
-);
+}) => {
+  const [isValid, setIsValid] = useState(false);
 
-const SubcategorySection = ({
-  subcat,
-  subKey,
-  scopeKey,
-  selectedSource,
-  formData,
-  onSourceChange,
-  onInputChange,
-  onAddEntry,
-  entries,
-}) => (
-  <div className="space-y-6 pb-6 border-b last:border-b-0 last:pb-0">
-    <h3 className="font-medium">{subcat.title}</h3>
+  const validateForm = () => {
+    const currentData = formData[scopeKey]?.[subKey] || {};
+    const requiredFields = fields.filter((f) => !f.optional);
+    const isComplete = requiredFields.every(
+      (field) =>
+        currentData[field.name] &&
+        currentData[field.name].toString().trim() !== ""
+    );
+    setIsValid(isComplete);
+    return isComplete;
+  };
 
+  React.useEffect(() => {
+    validateForm();
+  }, [formData, scopeKey, subKey]);
+
+  return (
     <div className="space-y-4">
-      <SelectField
-        label="Kaynak"
-        value={selectedSource}
-        onChange={(e) => onSourceChange(e.target.value)}
-        options={subcat.sources}
-        placeholder="Kaynak seçiniz"
-      />
-
-      {subcat.fuelTypes && (
-        <SelectField
-          label="Yakıt Türü"
-          options={subcat.fuelTypes}
-          value={formData[scopeKey]?.[subKey]?.fuelType || ""}
-          onChange={(e) =>
-            onInputChange(scopeKey, subKey, "fuelType", e.target.value)
-          }
-          placeholder="Yakıt türü seçiniz"
-        />
-      )}
-
-      {selectedSource && subcat.fields && (
-        <div className="pl-4 border-l-2 border-primary/20">
-          <EmissionForm
-            fields={subcat.fields}
-            scopeKey={scopeKey}
-            subKey={subKey}
-            formData={formData}
-            onInputChange={onInputChange}
-            onAddEntry={onAddEntry}
-            selectedSource={selectedSource}
-          />
-        </div>
-      )}
-
-      {entries.length > 0 && (
-        <div className="pt-4 border-t">
-          <h4 className="font-medium mb-3">Eklenen Kayıtlar</h4>
-          <div className="space-y-3">
-            {entries.map((entry) => (
-              <EntryCard key={entry.id} entry={entry} />
-            ))}
+      <div className="grid gap-4 md:grid-cols-2">
+        {fields.map((field) => (
+          <div key={field.name}>
+            {field.type === "select" ? (
+              <SelectField
+                label={field.label}
+                value={formData[scopeKey]?.[subKey]?.[field.name] || ""}
+                onChange={(e) =>
+                  onInputChange(scopeKey, subKey, field.name, e.target.value)
+                }
+                options={field.options}
+                placeholder="Seçiniz"
+                tooltip={field.description}
+              />
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={field.name}>{field.label}</Label>
+                  {field.description && (
+                    <Tooltip content={field.description}>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </Tooltip>
+                  )}
+                </div>
+                <Input
+                  id={field.name}
+                  type={field.type}
+                  value={formData[scopeKey]?.[subKey]?.[field.name] || ""}
+                  onChange={(e) =>
+                    onInputChange(scopeKey, subKey, field.name, e.target.value)
+                  }
+                  className={field.error ? "border-red-500" : ""}
+                />
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        ))}
+      </div>
+      <Button
+        className="w-full"
+        disabled={!isValid}
+        onClick={() => onAddEntry(scopeKey, subKey)}
+      >
+        <PlusCircle className="mr-2 h-4 w-4" />
+        Veri Ekle
+      </Button>
     </div>
-  </div>
-);
+  );
+};
 
 const categories = {
   scope1: {
@@ -336,39 +370,58 @@ const categories = {
   },
 };
 
+// Ana komponent
 const EmissionCategories = () => {
   const [activeCategory, setActiveCategory] = useState(null);
   const [selectedSource, setSelectedSource] = useState("");
   const [formData, setFormData] = useState({});
   const [entries, setEntries] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const handleInputChange = (scopeKey, subKey, field, value) => {
+  // Toplam ve tamamlanan giriş sayısını hesapla
+  const totalSources = Object.values(categories).reduce(
+    (acc, scope) =>
+      acc +
+      Object.values(scope.subcategories).reduce(
+        (subAcc, subcat) => subAcc + subcat.sources.length,
+        0
+      ),
+    0
+  );
+
+  const completedEntries = entries.length;
+
+  // handleInputChange fonksiyonu
+  const handleInputChange = (scopeKey, subKey, fieldName, value) => {
     setFormData((prev) => ({
       ...prev,
       [scopeKey]: {
         ...prev[scopeKey],
         [subKey]: {
-          ...prev[scopeKey]?.[subKey],
-          [field]: value,
+          ...(prev[scopeKey]?.[subKey] || {}),
+          [fieldName]: value,
         },
       },
     }));
   };
 
+  // handleAddEntry fonksiyonu
   const handleAddEntry = (scopeKey, subKey) => {
-    const currentFormData = formData[scopeKey]?.[subKey];
-    if (!currentFormData || !selectedSource) return;
+    const currentData = formData[scopeKey]?.[subKey];
+    if (!currentData || !selectedSource) return;
 
     const newEntry = {
       id: Date.now(),
       scopeKey,
       subKey,
       source: selectedSource,
-      ...currentFormData,
+      ...currentData,
     };
 
     setEntries((prev) => [...prev, newEntry]);
+
+    // Formu temizle
     setFormData((prev) => ({
       ...prev,
       [scopeKey]: {
@@ -377,55 +430,192 @@ const EmissionCategories = () => {
       },
     }));
     setSelectedSource("");
+
+    // Başarı mesajını göster
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
   };
 
+  const filteredCategories = React.useMemo(() => {
+    if (!searchTerm) return categories;
+
+    const filtered = {};
+    Object.entries(categories).forEach(([scopeKey, scope]) => {
+      const matchingSubcats = {};
+      Object.entries(scope.subcategories).forEach(([subKey, subcat]) => {
+        if (
+          subcat.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          subcat.sources.some((source) =>
+            source.toLowerCase().includes(searchTerm.toLowerCase())
+          )
+        ) {
+          matchingSubcats[subKey] = subcat;
+        }
+      });
+      if (Object.keys(matchingSubcats).length > 0) {
+        filtered[scopeKey] = {
+          ...scope,
+          subcategories: matchingSubcats,
+        };
+      }
+    });
+    return filtered;
+  }, [searchTerm, categories]);
+
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
-      <h1 className="text-2xl font-bold">Sera Gazı Emisyon Kategorileri</h1>
+    <div className="max-w-4xl mx-auto p-4 space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <h1 className="text-2xl font-bold">Sera Gazı Emisyon Kategorileri</h1>
+        <div className="flex items-center gap-2">
+          <Input
+            type="search"
+            placeholder="Kategori veya kaynak ara..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-xs"
+          />
+          <Button variant="outline" onClick={() => window.print()}>
+            Rapor Al
+          </Button>
+        </div>
+      </div>
 
-      {showSuccess && <Alert variant="success">Kayıt başarıyla eklendi!</Alert>}
+      <ProgressIndicator total={totalSources} completed={completedEntries} />
 
-      {Object.entries(categories).map(([scopeKey, scope]) => (
-        <Card key={scopeKey}>
-          <button
-            className="w-full px-6 py-4 text-left hover:bg-accent rounded-t-lg font-medium flex justify-between items-center"
-            onClick={() =>
-              setActiveCategory(activeCategory === scopeKey ? null : scopeKey)
-            }
-          >
-            <span>{scope.title}</span>
-            {activeCategory === scopeKey ? (
-              <ChevronUp className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+      {showSuccess && (
+        <Alert className="bg-green-50 border-green-200">
+          <AlertDescription className="text-green-800">
+            Veri başarıyla eklendi!
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* EmissionSummary komponenti burada */}
+      {entries.length > 0 && <EmissionSummary entries={entries} />}
+
+      <div className="grid gap-4">
+        {Object.entries(filteredCategories).map(([scopeKey, scope]) => (
+          <Card key={scopeKey} className="overflow-hidden">
+            <button
+              className="w-full px-6 py-4 text-left hover:bg-accent rounded-t-lg font-medium flex items-center justify-between"
+              onClick={() =>
+                setActiveCategory(activeCategory === scopeKey ? null : scopeKey)
+              }
+            >
+              <div className="flex items-center gap-4">
+                <span>{scope.title}</span>
+                <span className="text-sm text-muted-foreground">
+                  ({Object.keys(scope.subcategories).length} kategori)
+                </span>
+              </div>
+              {activeCategory === scopeKey ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+
+            {activeCategory === scopeKey && (
+              <CardContent className="divide-y">
+                {Object.entries(scope.subcategories).map(([subKey, subcat]) => (
+                  <div key={subKey} className="py-6 first:pt-0 last:pb-0">
+                    <FormHeader
+                      title={subcat.title}
+                      description={
+                        subcat.description ||
+                        "Bu kategori için veri girişi yapın"
+                      }
+                    />
+
+                    <div className="space-y-6">
+                      <SelectField
+                        label="Emisyon Kaynağı"
+                        value={selectedSource}
+                        onChange={(e) => setSelectedSource(e.target.value)}
+                        options={subcat.sources}
+                        placeholder="Kaynak seçiniz"
+                        tooltip="Emisyon kaynağını seçin"
+                      />
+
+                      {subcat.fuelTypes && (
+                        <SelectField
+                          label="Yakıt Türü"
+                          value={formData[scopeKey]?.[subKey]?.fuelType || ""}
+                          onChange={(e) =>
+                            handleInputChange(
+                              scopeKey,
+                              subKey,
+                              "fuelType",
+                              e.target.value
+                            )
+                          }
+                          options={subcat.fuelTypes}
+                          placeholder="Yakıt türü seçiniz"
+                          tooltip="Kullanılan yakıt türünü seçin"
+                        />
+                      )}
+
+                      {selectedSource && (
+                        <div className="rounded-lg border bg-card p-4">
+                          <EmissionForm
+                            fields={subcat.fields}
+                            scopeKey={scopeKey}
+                            subKey={subKey}
+                            formData={formData}
+                            onInputChange={handleInputChange}
+                            onAddEntry={handleAddEntry}
+                            selectedSource={selectedSource}
+                          />
+                        </div>
+                      )}
+
+                      {entries.filter(
+                        (e) => e.scopeKey === scopeKey && e.subKey === subKey
+                      ).length > 0 && (
+                        <div className="border-t pt-4">
+                          <h4 className="font-medium mb-3 flex items-center gap-2">
+                            Eklenen Kayıtlar
+                            <span className="text-sm text-muted-foreground">
+                              (
+                              {
+                                entries.filter(
+                                  (e) =>
+                                    e.scopeKey === scopeKey &&
+                                    e.subKey === subKey
+                                ).length
+                              }
+                              )
+                            </span>
+                          </h4>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {entries
+                              .filter(
+                                (e) =>
+                                  e.scopeKey === scopeKey && e.subKey === subKey
+                              )
+                              .map((entry) => (
+                                <EntryCard
+                                  key={entry.id}
+                                  entry={entry}
+                                  onDelete={(id) => {
+                                    setEntries(
+                                      entries.filter((e) => e.id !== id)
+                                    );
+                                    setShowSuccess(false);
+                                  }}
+                                />
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
             )}
-          </button>
-
-          {activeCategory === scopeKey && (
-            <CardContent>
-              {Object.entries(scope.subcategories).map(([subKey, subcat]) => (
-                <SubcategorySection
-                  key={subKey}
-                  subcat={subcat}
-                  subKey={subKey}
-                  scopeKey={scopeKey}
-                  selectedSource={selectedSource}
-                  formData={formData}
-                  onSourceChange={setSelectedSource}
-                  onInputChange={handleInputChange}
-                  onAddEntry={handleAddEntry}
-                  entries={entries.filter(
-                    (entry) =>
-                      entry.scopeKey === scopeKey && entry.subKey === subKey
-                  )}
-                />
-              ))}
-            </CardContent>
-          )}
-        </Card>
-      ))}
+          </Card>
+        ))}
+      </div>
     </div>
   );
 };
