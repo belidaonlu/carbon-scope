@@ -1,57 +1,359 @@
-import React, { useState } from 'react';
-import { Card, CardContent } from "./ui/Card";
-import { Input } from "./ui/Input";
-import { Label } from "./ui/Label";
-import { Button } from "./ui/Button_temp";
-import { 
-  PlusCircle, 
-  Save, 
-  Trash2, 
-  Download, 
-  Edit2, 
-  X, 
-  Check,
-  Upload
-} from "lucide-react";
-import { Alert, AlertDescription } from "./ui/Alert_temp";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "./ui/Dialog";
+import React, { useState } from "react";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
+import { PlusCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const SelectField = ({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  className,
+}) => (
+  <div className="space-y-2">
+    {label && <Label>{label}</Label>}
+    <select
+      className={cn(
+        "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        className
+      )}
+      value={value}
+      onChange={onChange}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  </div>
+);
+
+const EntryCard = ({ entry }) => (
+  <div className="p-4 rounded-md border bg-muted/50">
+    <p className="font-medium mb-2">{entry.source}</p>
+    <div className="space-y-1">
+      {Object.entries(entry).map(([key, value]) => {
+        if (["id", "scopeKey", "subKey", "source"].includes(key)) return null;
+        return (
+          <p key={key} className="text-sm text-muted-foreground">
+            {key}: {value}
+          </p>
+        );
+      })}
+    </div>
+  </div>
+);
+
+const EmissionForm = ({
+  fields,
+  scopeKey,
+  subKey,
+  formData,
+  onInputChange,
+  onAddEntry,
+  selectedSource,
+}) => (
+  <div className="space-y-4">
+    {fields.map((field) => (
+      <div key={field.name}>
+        {field.type === "select" ? (
+          <SelectField
+            label={field.label}
+            value={formData[scopeKey]?.[subKey]?.[field.name] || ""}
+            onChange={(e) =>
+              onInputChange(scopeKey, subKey, field.name, e.target.value)
+            }
+            options={field.options}
+            placeholder="Seçiniz"
+          />
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor={field.name}>{field.label}</Label>
+            <Input
+              id={field.name}
+              type={field.type}
+              value={formData[scopeKey]?.[subKey]?.[field.name] || ""}
+              onChange={(e) =>
+                onInputChange(scopeKey, subKey, field.name, e.target.value)
+              }
+            />
+          </div>
+        )}
+      </div>
+    ))}
+    <Button
+      variant="outline"
+      className="w-full"
+      onClick={() => onAddEntry(scopeKey, subKey)}
+    >
+      <PlusCircle className="mr-2 h-4 w-4" />
+      Ekle
+    </Button>
+  </div>
+);
+
+const SubcategorySection = ({
+  subcat,
+  subKey,
+  scopeKey,
+  selectedSource,
+  formData,
+  onSourceChange,
+  onInputChange,
+  onAddEntry,
+  entries,
+}) => (
+  <div className="space-y-6 pb-6 border-b last:border-b-0 last:pb-0">
+    <h3 className="font-medium">{subcat.title}</h3>
+
+    <div className="space-y-4">
+      <SelectField
+        label="Kaynak"
+        value={selectedSource}
+        onChange={(e) => onSourceChange(e.target.value)}
+        options={subcat.sources}
+        placeholder="Kaynak seçiniz"
+      />
+
+      {subcat.fuelTypes && (
+        <SelectField
+          label="Yakıt Türü"
+          options={subcat.fuelTypes}
+          value={formData[scopeKey]?.[subKey]?.fuelType || ""}
+          onChange={(e) =>
+            onInputChange(scopeKey, subKey, "fuelType", e.target.value)
+          }
+          placeholder="Yakıt türü seçiniz"
+        />
+      )}
+
+      {selectedSource && subcat.fields && (
+        <div className="pl-4 border-l-2 border-primary/20">
+          <EmissionForm
+            fields={subcat.fields}
+            scopeKey={scopeKey}
+            subKey={subKey}
+            formData={formData}
+            onInputChange={onInputChange}
+            onAddEntry={onAddEntry}
+            selectedSource={selectedSource}
+          />
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <div className="pt-4 border-t">
+          <h4 className="font-medium mb-3">Eklenen Kayıtlar</h4>
+          <div className="space-y-3">
+            {entries.map((entry) => (
+              <EntryCard key={entry.id} entry={entry} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+const categories = {
+  scope1: {
+    title: "Kapsam 1 - Doğrudan Emisyonlar",
+    subcategories: {
+      stationaryCombustion: {
+        title: "Sabit Yakma Kaynaklı Emisyonlar",
+        sources: ["Kazanlar", "Fırınlar", "Türbinler", "Isıtıcılar"],
+        fuelTypes: ["Doğal Gaz", "Fuel Oil", "LPG", "Kömür"],
+        fields: [
+          { name: "consumption", label: "Yakıt Tüketimi", type: "number" },
+          {
+            name: "unit",
+            label: "Birim",
+            type: "select",
+            options: ["m³", "kg", "lt"],
+          },
+          { name: "operatingHours", label: "Çalışma Saati", type: "number" },
+        ],
+      },
+      mobileCombustion: {
+        title: "Hareketli Yakma Kaynaklı Emisyonlar",
+        sources: ["Şirkete ait araçlar", "Forkliftler", "İş makineleri"],
+        fuelTypes: ["Benzin", "Dizel", "LPG"],
+        fields: [
+          { name: "consumption", label: "Yakıt Tüketimi", type: "number" },
+          {
+            name: "unit",
+            label: "Birim",
+            type: "select",
+            options: ["lt", "kg"],
+          },
+          { name: "distance", label: "Kat edilen mesafe (km)", type: "number" },
+        ],
+      },
+      fugitiveEmissions: {
+        title: "Kaçak Emisyonlar",
+        sources: ["Soğutucular", "Klima Sistemleri", "Yangın Söndürücüler"],
+        fields: [
+          {
+            name: "refrigerantType",
+            label: "Soğutucu Türü",
+            type: "select",
+            options: ["R-410A", "R-407C", "R-134a", "R-404A"],
+          },
+          { name: "amount", label: "Kullanılan Miktar", type: "number" },
+          { name: "unit", label: "Birim", type: "select", options: ["kg"] },
+        ],
+      },
+    },
+  },
+  scope2: {
+    title: "Kapsam 2 - Dolaylı Emisyonlar",
+    subcategories: {
+      electricity: {
+        title: "Elektrik Tüketimi",
+        sources: ["Ofis Binaları", "Üretim Tesisleri", "Depolar", "Aydınlatma"],
+        fields: [
+          { name: "consumption", label: "Elektrik Tüketimi", type: "number" },
+          {
+            name: "unit",
+            label: "Birim",
+            type: "select",
+            options: ["kWh", "MWh"],
+          },
+          { name: "billingPeriod", label: "Fatura Dönemi", type: "text" },
+        ],
+      },
+      heating: {
+        title: "Isıtma/Soğutma",
+        sources: ["Merkezi Sistem", "Bireysel Sistemler"],
+        fields: [
+          { name: "consumption", label: "Tüketim", type: "number" },
+          {
+            name: "unit",
+            label: "Birim",
+            type: "select",
+            options: ["kWh", "MWh", "kcal"],
+          },
+          { name: "period", label: "Dönem", type: "text" },
+        ],
+      },
+    },
+  },
+  scope3: {
+    title: "Kapsam 3 - Diğer Dolaylı Emisyonlar",
+    subcategories: {
+      businessTravel: {
+        title: "İş Seyahatleri",
+        sources: ["Uçak", "Otobüs", "Tren", "Taksi"],
+        fields: [
+          { name: "distance", label: "Mesafe", type: "number" },
+          { name: "unit", label: "Birim", type: "select", options: ["km"] },
+          { name: "passengers", label: "Yolcu Sayısı", type: "number" },
+          { name: "travelDate", label: "Seyahat Tarihi", type: "date" },
+        ],
+      },
+      employeeCommuting: {
+        title: "Personel Servis/Ulaşım",
+        sources: ["Servis Araçları", "Toplu Taşıma", "Özel Araçlar"],
+        fields: [
+          { name: "distance", label: "Günlük Mesafe", type: "number" },
+          { name: "unit", label: "Birim", type: "select", options: ["km"] },
+          { name: "employeeCount", label: "Çalışan Sayısı", type: "number" },
+          { name: "workingDays", label: "Çalışma Günü", type: "number" },
+        ],
+      },
+      wasteDisposal: {
+        title: "Atık Yönetimi",
+        sources: [
+          "Evsel Atıklar",
+          "Endüstriyel Atıklar",
+          "Geri Dönüşüm",
+          "Tehlikeli Atıklar",
+        ],
+        fields: [
+          { name: "amount", label: "Atık Miktarı", type: "number" },
+          {
+            name: "unit",
+            label: "Birim",
+            type: "select",
+            options: ["kg", "ton"],
+          },
+          {
+            name: "disposalMethod",
+            label: "Bertaraf Yöntemi",
+            type: "select",
+            options: ["Düzenli Depolama", "Yakma", "Geri Dönüşüm", "Kompost"],
+          },
+        ],
+      },
+      purchasedGoods: {
+        title: "Satın Alınan Ürün ve Hizmetler",
+        sources: [
+          "Hammaddeler",
+          "Yarı Mamüller",
+          "Ambalaj Malzemeleri",
+          "Ofis Malzemeleri",
+        ],
+        fields: [
+          { name: "materialType", label: "Malzeme Türü", type: "text" },
+          { name: "amount", label: "Miktar", type: "number" },
+          {
+            name: "unit",
+            label: "Birim",
+            type: "select",
+            options: ["kg", "ton", "adet"],
+          },
+          { name: "supplier", label: "Tedarikçi", type: "text" },
+        ],
+      },
+      upstreamTransportation: {
+        title: "Tedarik Zinciri Nakliye",
+        sources: [
+          "Kara Nakliyesi",
+          "Deniz Nakliyesi",
+          "Hava Nakliyesi",
+          "Demiryolu",
+        ],
+        fields: [
+          { name: "distance", label: "Mesafe", type: "number" },
+          { name: "unit", label: "Birim", type: "select", options: ["km"] },
+          { name: "weight", label: "Taşınan Yük", type: "number" },
+          {
+            name: "weightUnit",
+            label: "Yük Birimi",
+            type: "select",
+            options: ["kg", "ton"],
+          },
+        ],
+      },
+    },
+  },
+};
 
 const EmissionCategories = () => {
   const [activeCategory, setActiveCategory] = useState(null);
-  const [selectedSource, setSelectedSource] = useState('');
+  const [selectedSource, setSelectedSource] = useState("");
   const [formData, setFormData] = useState({});
   const [entries, setEntries] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
-  const [editingEntry, setEditingEntry] = useState(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [entryToDelete, setEntryToDelete] = useState(null);
-  const [bulkImportDialog, setBulkImportDialog] = useState(false);
-  const [importData, setImportData] = useState('');
 
   const handleInputChange = (scopeKey, subKey, field, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [scopeKey]: {
         ...prev[scopeKey],
         [subKey]: {
           ...prev[scopeKey]?.[subKey],
-          [field]: value
-        }
-      }
+          [field]: value,
+        },
+      },
     }));
-  };
-
-  const showSuccessAlert = (message) => {
-    setSuccessMessage(message);
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 3000);
   };
 
   const handleAddEntry = (scopeKey, subKey) => {
@@ -63,411 +365,67 @@ const EmissionCategories = () => {
       scopeKey,
       subKey,
       source: selectedSource,
-      ...currentFormData
+      ...currentFormData,
     };
 
-    setEntries(prev => [...prev, newEntry]);
-    resetForm(scopeKey, subKey);
-    showSuccessAlert('Kayıt başarıyla eklendi!');
-  };
-
-  const resetForm = (scopeKey, subKey) => {
-    setFormData(prev => ({
+    setEntries((prev) => [...prev, newEntry]);
+    setFormData((prev) => ({
       ...prev,
       [scopeKey]: {
         ...prev[scopeKey],
-        [subKey]: {}
-      }
+        [subKey]: {},
+      },
     }));
-    setSelectedSource('');
-  };
-
-  const handleDeleteClick = (entry) => {
-    setEntryToDelete(entry);
-    setShowDeleteDialog(true);
-  };
-
-  const handleDelete = () => {
-    setEntries(prev => prev.filter(e => e.id !== entryToDelete.id));
-    setShowDeleteDialog(false);
-    showSuccessAlert('Kayıt başarıyla silindi!');
-  };
-
-  const handleEditClick = (entry) => {
-    setEditingEntry(entry);
-    setFormData(prev => ({
-      ...prev,
-      [entry.scopeKey]: {
-        ...prev[entry.scopeKey],
-        [entry.subKey]: { ...entry }
-      }
-    }));
-    setSelectedSource(entry.source);
-  };
-
-  const handleUpdateEntry = () => {
-    const updatedEntries = entries.map(entry =>
-      entry.id === editingEntry.id
-        ? { ...formData[editingEntry.scopeKey][editingEntry.subKey], id: entry.id }
-        : entry
-    );
-    setEntries(updatedEntries);
-    resetForm(editingEntry.scopeKey, editingEntry.subKey);
-    setEditingEntry(null);
-    showSuccessAlert('Kayıt başarıyla güncellendi!');
-  };
-
-  const handleExport = () => {
-    const exportData = JSON.stringify(entries, null, 2);
-    const blob = new Blob([exportData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'emisyon-kayitlari.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showSuccessAlert('Veriler başarıyla dışa aktarıldı!');
-  };
-
-  const handleBulkImport = () => {
-    try {
-      const importedData = JSON.parse(importData);
-      setEntries(prev => [...prev, ...importedData]);
-      setBulkImportDialog(false);
-      setImportData('');
-      showSuccessAlert('Veriler başarıyla içe aktarıldı!');
-    } catch (error) {
-      showSuccessAlert('Hata: Geçersiz veri formatı!');
-    }
-  };
-
-  const categories = {
-    scope1: {
-      title: "Kapsam 1 - Doğrudan Emisyonlar",
-      subcategories: {
-        stationaryCombustion: {
-          title: "Sabit Yakma Kaynaklı Emisyonlar",
-          sources: ["Kazanlar", "Fırınlar", "Türbinler", "Isıtıcılar"],
-          fuelTypes: ["Doğal Gaz", "Fuel Oil", "LPG", "Kömür"],
-          fields: [
-            { name: "consumption", label: "Yakıt Tüketimi", type: "number" },
-            { name: "unit", label: "Birim", type: "select", options: ["m³", "kg", "lt"] },
-            { name: "operatingHours", label: "Çalışma Saati", type: "number" }
-          ]
-        },
-        mobileCombustion: {
-          title: "Hareketli Yakma Kaynaklı Emisyonlar",
-          sources: ["Şirkete ait araçlar", "Forkliftler", "İş makineleri"],
-          fuelTypes: ["Benzin", "Dizel", "LPG"],
-          fields: [
-            { name: "consumption", label: "Yakıt Tüketimi", type: "number" },
-            { name: "unit", label: "Birim", type: "select", options: ["lt", "kg"] },
-            { name: "distance", label: "Kat edilen mesafe (km)", type: "number" }
-          ]
-        }
-      }
-    },
-    scope2: {
-      title: "Kapsam 2 - Enerji Dolaylı Emisyonlar",
-      subcategories: {
-        purchasedElectricity: {
-          title: "Satın Alınan Elektrik",
-          sources: ["Şebeke elektriği", "Yenilenebilir enerji"],
-          fields: [
-            { name: "consumption", label: "Elektrik Tüketimi (kWh)", type: "number" },
-            { name: "period", label: "Dönem", type: "select", options: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"] }
-          ]
-        },
-        purchasedHeating: {
-          title: "Satın Alınan Isı/Soğutma",
-          sources: ["Bölgesel ısıtma", "Bölgesel soğutma", "Buhar"],
-          fields: [
-            { name: "consumption", label: "Tüketim", type: "number" },
-            { name: "unit", label: "Birim", type: "select", options: ["kWh", "ton", "kcal"] }
-          ]
-        }
-      }
-    },
-    scope3: {
-      title: "Kapsam 3 - Diğer Dolaylı Emisyonlar",
-      subcategories: {
-        businessTravel: {
-          title: "İş Seyahatleri",
-          sources: ["Uçak", "Otobüs", "Tren", "Araç"],
-          fields: [
-            { name: "from", label: "Nereden", type: "text" },
-            { name: "to", label: "Nereye", type: "text" },
-            { name: "distance", label: "Mesafe (km)", type: "number" },
-            { name: "passengers", label: "Yolcu Sayısı", type: "number" },
-            { name: "roundTrip", label: "Gidiş-Dönüş", type: "select", options: ["Evet", "Hayır"] }
-          ]
-        },
-        employeeCommuting: {
-          title: "Çalışanların İşe Gidiş-Gelişleri",
-          sources: ["Servis", "Toplu Taşıma", "Özel Araç"],
-          fields: [
-            { name: "employeeCount", label: "Çalışan Sayısı", type: "number" },
-            { name: "distance", label: "Ortalama Mesafe (km/gün)", type: "number" },
-            { name: "workingDays", label: "Aylık Çalışma Günü", type: "number" }
-          ]
-        },
-        wasteDisposal: {
-          title: "Atık Bertarafı",
-          sources: ["Geri Dönüşüm", "Düzenli Depolama", "Yakma"],
-          fields: [
-            { name: "wasteType", label: "Atık Türü", type: "text" },
-            { name: "amount", label: "Miktar", type: "number" },
-            { name: "unit", label: "Birim", type: "select", options: ["kg", "ton"] }
-          ]
-        }
-      }
-    }
-  };
-
-  const renderFields = (fields, scopeKey, subKey) => {
-    return (
-      <div className="space-y-4">
-        {fields.map(field => (
-          <div key={field.name} className="mb-4">
-            <Label htmlFor={field.name}>{field.label}</Label>
-            {field.type === 'select' ? (
-              <select
-                id={field.name}
-                className="w-full p-2 border rounded mt-1"
-                value={formData[scopeKey]?.[subKey]?.[field.name] || ''}
-                onChange={(e) => handleInputChange(scopeKey, subKey, field.name, e.target.value)}
-              >
-                <option value="">Seçiniz</option>
-                {field.options.map(option => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            ) : (
-              <Input
-                id={field.name}
-                type={field.type}
-                className="mt-1"
-                value={formData[scopeKey]?.[subKey]?.[field.name] || ''}
-                onChange={(e) => handleInputChange(scopeKey, subKey, field.name, e.target.value)}
-              />
-            )}
-          </div>
-        ))}
-        <div className="flex gap-2">
-          {editingEntry ? (
-            <>
-              <Button 
-                className="flex-1"
-                onClick={handleUpdateEntry}
-              >
-                <Check className="mr-2 h-4 w-4" />
-                Güncelle
-              </Button>
-              <Button 
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setEditingEntry(null);
-                  resetForm(scopeKey, subKey);
-                }}
-              >
-                <X className="mr-2 h-4 w-4" />
-                İptal
-              </Button>
-            </>
-          ) : (
-            <Button 
-              className="w-full"
-              onClick={() => handleAddEntry(scopeKey, subKey)}
-            >
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Ekle
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderEntries = (scopeKey, subKey) => {
-    const relevantEntries = entries.filter(
-      entry => entry.scopeKey === scopeKey && entry.subKey === subKey
-    );
-
-    if (relevantEntries.length === 0) return null;
-
-    return (
-      <div className="mt-6 border-t pt-4">
-        <h4 className="font-medium mb-3">Eklenen Kayıtlar</h4>
-        <div className="space-y-3">
-          {relevantEntries.map(entry => (
-            <div key={entry.id} className="p-3 bg-gray-50 rounded-lg flex justify-between items-start">
-              <div className="flex-1">
-                <p className="font-medium">{entry.source}</p>
-                {Object.entries(entry).map(([key, value]) => {
-                  if (['id', 'scopeKey', 'subKey', 'source'].includes(key)) return null;
-                  return (
-                    <p key={key} className="text-sm text-gray-600">
-                      {key}: {value}
-                    </p>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleEditClick(entry)}
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-red-600 hover:text-red-700"
-                  onClick={() => handleDeleteClick(entry)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    setSelectedSource("");
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
   };
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Sera Gazı Emisyon Kategorileri</h1>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setBulkImportDialog(true)}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            İçe Aktar
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleExport}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Dışa Aktar
-          </Button>
-        </div>
-      </div>
-      
-      {showSuccess && (
-        <Alert className="bg-green-50 text-green-800 border-green-200">
-          <AlertDescription>
-            {successMessage}
-          </AlertDescription>
-        </Alert>
-      )}
-      
+      <h1 className="text-2xl font-bold">Sera Gazı Emisyon Kategorileri</h1>
+
+      {showSuccess && <Alert variant="success">Kayıt başarıyla eklendi!</Alert>}
+
       {Object.entries(categories).map(([scopeKey, scope]) => (
         <Card key={scopeKey}>
           <button
-            className="w-full p-4 text-left hover:bg-gray-50 rounded-t-lg font-medium"
-            onClick={() => setActiveCategory(activeCategory === scopeKey ? null : scopeKey)}
+            className="w-full px-6 py-4 text-left hover:bg-accent rounded-t-lg font-medium flex justify-between items-center"
+            onClick={() =>
+              setActiveCategory(activeCategory === scopeKey ? null : scopeKey)
+            }
           >
-            {scope.title}
+            <span>{scope.title}</span>
+            {activeCategory === scopeKey ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
           </button>
-          
+
           {activeCategory === scopeKey && (
-            <CardContent className="pt-4">
+            <CardContent>
               {Object.entries(scope.subcategories).map(([subKey, subcat]) => (
-                <div key={subKey} className="mb-6 border-b pb-6 last:border-b-0">
-                  <h3 className="font-medium mb-4">{subcat.title}</h3>
-                  <div className="space-y-4">
-                    <select
-                      className="w-full p-2 border rounded"
-                      value={selectedSource}
-                      onChange={(e) => setSelectedSource(e.target.value)}
-                    >
-                      <option value="">Kaynak seçiniz</option>
-                      {subcat.sources.map((source) => (
-                        <option key={source} value={source}>{source}</option>
-                      ))}
-                    </select>
-                    
-                    {subcat.fuelTypes && (
-                      <select 
-                        className="w-full p-2 border rounded"
-                        value={formData[scopeKey]?.[subKey]?.fuelType || ''}
-                        onChange={(e) => handleInputChange(scopeKey, subKey, 'fuelType', e.target.value)}
-                      >
-                        <option value="">Yakıt türü seçiniz</option>
-                        {subcat.fuelTypes.map((fuel) => (
-                          <option key={fuel} value={fuel}>{fuel}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    {selectedSource && subcat.fields && (
-                      <div className="mt-4 pl-4 border-l-2 border-gray-200">
-                        {renderFields(subcat.fields, scopeKey, subKey)}
-                      </div>
-                    )}
-
-                    {renderEntries(scopeKey, subKey)}
-                  </div>
-                </div>
+                <SubcategorySection
+                  key={subKey}
+                  subcat={subcat}
+                  subKey={subKey}
+                  scopeKey={scopeKey}
+                  selectedSource={selectedSource}
+                  formData={formData}
+                  onSourceChange={setSelectedSource}
+                  onInputChange={handleInputChange}
+                  onAddEntry={handleAddEntry}
+                  entries={entries.filter(
+                    (entry) =>
+                      entry.scopeKey === scopeKey && entry.subKey === subKey
+                  )}
+                />
               ))}
             </CardContent>
           )}
         </Card>
       ))}
-
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Kaydı Sil</DialogTitle>
-          </DialogHeader>
-          <p>Bu kaydı silmek istediğinizden emin misiniz?</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              İptal
-            </Button>
-            <Button 
-              variant="destructive"
-              onClick={handleDelete}
-            >
-              Sil
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={bulkImportDialog} onOpenChange={setBulkImportDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Toplu Veri İçe Aktarma</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              JSON formatında verileri yapıştırın
-            </p>
-            <textarea
-              className="w-full h-40 p-2 border rounded"
-              value={importData}
-              onChange={(e) => setImportData(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkImportDialog(false)}>
-              İptal
-            </Button>
-            <Button onClick={handleBulkImport}>
-              İçe Aktar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
